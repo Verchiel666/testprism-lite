@@ -1,0 +1,11 @@
+{
+  "schema_version": 3,
+  "task_id": "mini_calc",
+  "patch_set_id": "mini-calc-panel-1",
+  "solutions": [
+    { "id": "gold", "label": "oracle_valid", "path": "solutions/gold.sh", "is_gold": true },
+    { "id": "valid-split", "label": "oracle_valid", "path": "solutions/valid-split.sh", "is_gold": false },
+    { "id": "bug-descending", "label": "oracle_invalid", "path": "solutions/bug-descending.sh", "is_gold": false },
+    { "id": "bug-spaces", "label": "oracle_invalid", "path": "solutions/bug-spaces.sh", "is_gold": false }
+  ]
+}

@@ -1,0 +1,10 @@
+instruction: |
+  Implement parseRange(text) in calc.mjs.
+
+  A range list is comma separated; optional spaces after a comma are allowed.
+  An item is either a single integer, or "a-b" which expands to every integer
+  from a to b inclusive.
+
+  Errors (the messages are part of the contract):
+    - descending range (a > b)      -> RangeError('descending range')
+    - empty or non-numeric item     -> TypeError('bad item')

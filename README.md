@@ -1,0 +1,176 @@
+# testprism-lite
+
+[![npm](https://img.shields.io/npm/v/testprism-lite.svg)](https://www.npmjs.com/package/testprism-lite)
+[![license](https://img.shields.io/npm/l/testprism-lite.svg)](LICENSE)
+
+**Score a test suite against a panel of implementations instead of one reference solution.**
+
+A test that fails on the broken code and passes on *the* reference solution can still be worthless: it may
+accept every other buggy implementation, or reject every other correct one. This tool implements the
+**JSF (Joint Success Function)** criterion from
+[TestPrism](https://doi.org/10.48550/arXiv.2610.12289) — *TestPrism: Rethinking Test Evaluation Beyond a Single Reference* —
+in plain Node.js, with **no Docker and no Python requirement**.
+
+```
+baseline_detected : the suite fails on the untouched code
+VAR               : share of valid alternatives the suite accepts
+IRR               : share of invalid implementations the suite rejects
+JSF (resolved)    : baseline_detected && VAR == 1 && IRR == 1 && no patch errors
+RAR               : single-reference success (baseline fails, reference passes)  ← always ≥ JSF
+```
+
+`RAR − JSF` is exactly the part of "my tests are good" that a single reference solution cannot see.
+
+## Install
+
+```sh
+npm install -g testprism-lite     # or: npx testprism-lite run ...
+```
+
+Node.js ≥ 20. Nothing else. (Suites may of course use whatever runtime they need — you tell the tool how to run them.)
+
+## Quick start (bundled example, no network)
+
+```sh
+git clone https://github.com/Verchiel666/testprism-lite && cd testprism-lite
+
+# a good suite: resolves
+node bin/testprism-lite.mjs run \
+  --task examples/mini/task --patch-set examples/mini/patch-set --suite examples/mini/suites/good
+# RAR 100%  VAR 100%  IRR 100%  JSF PASS
+
+# a weak suite: passes the reference, accepts both broken implementations
+node bin/testprism-lite.mjs run \
+  --task examples/mini/task --patch-set examples/mini/patch-set --suite examples/mini/suites/weak
+# RAR 100%  VAR 100%  IRR   0%  JSF fail
+```
+
+That second line is the whole point of the tool: **single-reference evaluation calls it a success**.
+
+## Use it on a real test suite
+
+A *task directory* contains the initial code to be implemented or fixed:
+
+```
+task/
+└── workspace/          # the code as it is now (test fails here)
+```
+
+Two ways to supply the panel:
+
+**1. A TestPrism patch set** (the official datasets, HF `testprism-anonymous/testprism-patch-sets`):
+
+```
+patch-set/
+├── manifest.json       # schema v3/v4: solutions[] with label oracle_valid | oracle_invalid
+└── solutions/<id>/solution.sh
+```
+
+```sh
+testprism-lite run --task ./task --patch-set ./patch-set --suite ./my-tests
+```
+
+**2. Your own panel** (no TestPrism data needed) — just list implementations:
+
+```json
+[
+  { "id": "gold",     "label": "valid",   "impl": "impls/gold.py" },
+  { "id": "rewrite",  "label": "valid",   "impl": "impls/rewrite.py" },
+  { "id": "bug-cjk",  "label": "invalid", "impl": "impls/bug-cjk.py" }
+]
+```
+
+```sh
+testprism-lite run --task ./task --panel ./panel.json --suite ./tests --impl-name extract.mjs
+```
+
+## How the suite is executed
+
+The suite directory is copied into `<workspace>/.testprism/suite` and executed with the workspace as
+the working directory, with `APP_DIR` and `PYTHONPATH` (workspace first) already set. Exit code 0 means
+*accepted*, anything else means *rejected*.
+
+Default runners, in order:
+
+1. `.testprism/suite/run-tests.sh` if it exists (`sh run-tests.sh`)
+2. otherwise `python3 -m pytest .testprism/suite -q`
+
+Override with anything you like:
+
+```sh
+--run "node .testprism/suite/test.mjs"
+--run "pytest .testprism/suite -q"
+--run "sh .testprism/suite/run.sh && go test ./..."
+```
+
+Extra flags worth knowing:
+
+| flag | why |
+|---|---|
+| `--python <path>` | published patch scripts sometimes call `python3`; route those calls to a specific interpreter |
+| `--pythonpath <dir>` | extra `PYTHONPATH` entry (e.g. a directory where pytest lives) |
+| `--no-adapt` | by default `cd /app` inside published patch scripts is rewritten to `cd "$APP_DIR"`; disable if you really want container paths |
+| `--keep` | keep the prepared workspaces for debugging |
+| `--json out.json` | full per-candidate report (patch output, suite output, timings) |
+| `--quiet` | one summary line |
+
+## Commands
+
+| command | what it does |
+|---|---|
+| `run` | full panel: baseline + every valid/invalid candidate → VAR / IRR / RAR / JSF |
+| `ref` | only baseline + the reference (gold) — the "single-reference" number, ~1 s |
+| `probe` | run the suite against one arbitrary implementation (differential testing, PCV, mutation work) |
+| `scan` | JSF as a function of panel size (valid-only / invalid-only / alternating additions) |
+
+## Measured example: our own test suite, and an LLM's
+
+Ran on the device this was written on (Android, Termux Python, no Docker), 8 Python tasks from the
+official 300-task multi-patch subset, suites generated by `deepseek-flash`, panel hidden from the model:
+
+| suite | RAR | VAR | IRR | JSF |
+|---|---|---|---|---|
+| canonical exercism tests (sanity: labels reproduced 80/80) | 100% | 100% | 100% | **PASS** |
+| LLM suite, one shot (n=7 tasks) | 71% | 83% | 71% | **29%** |
+| LLM suite, repaired against the reference until RAR = 100% | 100% | 100% | 68% | **38%** |
+| same model, TestHelix-style multi-draft + peer cross-validation (n=8) | 38% | 35% | 98% | **13%** |
+| our own project's 68-assertion self-test (JS extractor) | 100% | 100% | **0%** | **fail** |
+
+Two things to take away: forcing `RAR = 100%` only gets JSF to 38% here — **the gap is not "the model cannot
+satisfy the reference"**, it is what the reference cannot check. And a hand-written 68-assertion self-test scored
+IRR = 0 on an LLM-built panel: its assertions were all indirect.
+
+## Making a panel when you have no dataset
+
+`JSF` needs labelled implementations. If you don't have them:
+
+1. **Differential oracle.** Collect a corpus of inputs. Ask a model for *behaviour-preserving rewrites*; keep one
+   only if its outputs match the reference on **every** corpus input. Ask for *one realistic bug of a named class*;
+   keep only variants whose outputs **differ** on some corpus input. Drop everything else — a panel that cannot
+   be validated is worse than no panel.
+2. **Scripted mutants** for the invalid side (classic mutation testing, no API): flip loop bounds, drop a
+   `dedupe`, change a normalisation order, add `+1` to a counter — then filter by observability on the corpus.
+3. Score your existing suite with `run --panel`. `IRR < 1` = the suite is too weak; `VAR < 1` = it is
+   over-fitted to incidental details of one implementation.
+
+Start with a small corpus: a bug that no corpus input can observe is invisible to the panel too — this is the
+most common way a self-audit lies to you.
+
+## What this is not
+
+- Not the official TestPrism harness: no task containers, no coverage metrics (Change/Entry coverage), no
+  agent runtime. It runs **one suite you already have** against **a panel you already have**.
+- Not a replacement for the paper's agent evaluation: generation, RSI and the leaderboard live upstream
+  ([github.com/TestPrism/TestPrism](https://github.com/TestPrism/TestPrism), Apache-2.0).
+- The bundled example is synthetic and tiny on purpose; it tests the tool, not your code.
+
+## 中文速览
+
+`testprism-lite` 把论文 TestPrism 的 **JSF** 判据做成一个零依赖 Node 命令行工具：不再问「你的测试能不能在参考实现上通过」，
+而是问「在 5 份正确实现上都通过、在 5 份错误实现上都失败吗」。不需要 Docker，`RAR`（单参考）永远 ≥ `JSF`，两者的差就是
+单参考评测看不见的那部分。实测：同一批 LLM 写的测试，单参考 100%，10 人面板下只有 38%。
+
+## License
+
+MIT. The metrics follow the TestPrism paper and artifact (Apache-2.0) by Nanjing University; this repository
+contains no data from it.

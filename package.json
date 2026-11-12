@@ -1,0 +1,42 @@
+{
+  "name": "testprism-lite",
+  "version": "0.1.0",
+  "description": "Docker-free TestPrism / JSF evaluator: score a test suite against a panel of valid and invalid implementations instead of a single reference solution.",
+  "type": "module",
+  "bin": {
+    "testprism-lite": "bin/testprism-lite.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "examples",
+    "dev",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node dev/selftest.mjs"
+  },
+  "keywords": [
+    "testing",
+    "test-generation",
+    "llm",
+    "evaluation",
+    "benchmark",
+    "jsf",
+    "testprism",
+    "mutation-testing"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Verchiel666/testprism-lite.git"
+  },
+  "homepage": "https://github.com/Verchiel666/testprism-lite",
+  "bugs": {
+    "url": "https://github.com/Verchiel666/testprism-lite/issues"
+  }
+}
