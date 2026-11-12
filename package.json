@@ -1,6 +1,6 @@
 {
   "name": "testprism-lite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Docker-free TestPrism / JSF evaluator: score a test suite against a panel of valid and invalid implementations instead of a single reference solution.",
   "type": "module",
   "bin": {
